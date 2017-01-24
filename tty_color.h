@@ -1,11 +1,14 @@
 #ifndef _LINUX_TTY_COLOR_H
 #define _LINUX_TTY_COLOR_H
 
+#include <stdarg.h>
+
 #define tty_color(color)   "\e[38;5;" #color "m"
 #define tty_clear()        "\e[0m"
 
+#define LOG_TAG
 #define log(color, fmt, arg...) \
-	printf(tty_color(color) fmt tty_clear() "\n", ##arg);
+	printf(tty_color(color) LOG_TAG " : " fmt tty_clear() "\n", ##arg);
 
 #define logd(fmt, arg...) log(39, fmt, ##arg);
 #define logi(fmt, arg...) log(190, fmt, ##arg);
