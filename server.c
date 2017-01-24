@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -10,7 +11,68 @@
 
 void *handle_client(void *arg)
 {
-	logd("connected sock fd is %d", *(int *)arg);
+	struct msghdr msg;
+	struct iovec iv;
+	struct cmsghdr *cmsg;
+	char cmsgbuf[CMSG_SPACE(sizeof(int))];
+	char buf[1024];
+	struct pollfd pfd;
+	int sock = *(int *)arg;
+	int ret;
+	int fd;
+
+	logd("connected sock fd is %d", sock);
+
+	pfd.fd = sock;
+	pfd.events = POLLIN | POLLERR | POLLHUP | POLLNVAL;
+
+	ret = poll(&pfd, 1, 10 * 1000);
+	if (ret < 0) {
+		loge("poll() failed");
+	} else if (ret > 0) {
+		if (pfd.revents & POLLHUP) {
+			logi("poll() got event POLLHUP");
+		}
+		if (pfd.revents & POLLERR) {
+			logi("poll() got event POLLERR");
+		}
+		if (pfd.revents & POLLNVAL) {
+			logi("poll() got event POLLNVAL");
+		}
+		if (pfd.revents & POLLIN) {
+			logi("poll() got event POLLIN");
+			memset(&msg, 0, sizeof(msg));
+			memset(&cmsgbuf, 0, sizeof(cmsgbuf));
+			memset(&buf, 0, sizeof(buf));
+
+			iv.iov_base = buf;
+			iv.iov_len = sizeof(buf);
+
+			msg.msg_iov = &iv;
+			msg.msg_iovlen = 1;
+			msg.msg_control = cmsgbuf;
+			msg.msg_controllen = sizeof(cmsgbuf);
+
+			ret = recvmsg(sock, &msg, 0);
+			if (ret < 0) {
+				loge("recvmsg() failed");
+			}
+			if (ret == 0) {
+				logi("socket is closed");
+			} else {
+				logi("recvmsg() got %d\n", ret);
+			}
+
+			fd = -1;
+			for (cmsg = CMSG_FIRSTHDR(&msg); cmsg;
+					cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+				if (cmsg->cmsg_level == SOL_SOCKET &&
+						cmsg->cmsg_type == SCM_RIGHTS) {
+					memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
+				}
+			}
+		}
+	}
 }
 
 int main(int argc, char *argv[])
